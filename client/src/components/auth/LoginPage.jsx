@@ -45,11 +45,25 @@ export default function LoginPage() {
 
   const handleGoogle = async () => {
     setGLoading(true)
+    setErrors({})
     try {
       await loginWithGoogle()
       navigate('/dashboard')
     } catch (err) {
-      setErrors({ submit: 'Google sign-in failed. Please try again.' })
+      console.error('[Google Sign-In Error]', err)
+      let msg = 'Google sign-in failed. Please try again.'
+      if (err.code === 'auth/operation-not-allowed') {
+        msg = 'Google Sign-In is not enabled in Firebase. Enable it in Firebase Console → Authentication → Sign-in method.'
+      } else if (err.code === 'auth/unauthorized-domain') {
+        msg = 'Domain not authorized. Add localhost in Firebase Console → Authentication → Settings → Authorized domains.'
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        msg = 'Sign-in popup was closed before finishing.'
+      } else if (err.code === 'auth/invalid-api-key' || err.code === 'auth/api-key-not-valid') {
+        msg = 'Invalid Firebase API Key in client/.env. Please check VITE_FIREBASE_API_KEY.'
+      } else if (err.message) {
+        msg = `Google sign-in failed: ${err.message}`
+      }
+      setErrors({ submit: msg })
     } finally {
       setGLoading(false)
     }

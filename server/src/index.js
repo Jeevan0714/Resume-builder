@@ -23,9 +23,11 @@ app.get('/health', (_, res) => res.json({ status: 'OK', ts: new Date().toISOStri
 /* ── Protected Routes ──────────────────────────────────── */
 app.use('/api', authenticateUser)
 
-// Resume
+// Resume & Preferences
 app.post('/api/resume/upload', resumeController.upload)
 app.get( '/api/resume/profile', resumeController.getProfile)
+app.post('/api/user/preferences', resumeController.savePreferences)
+app.get( '/api/user/preferences', resumeController.getPreferences)
 
 // Jobs
 app.get('/api/jobs/feed', scrapeController.getFeed)

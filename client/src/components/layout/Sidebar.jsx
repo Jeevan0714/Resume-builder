@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { id: 'coach',      icon: '🎯', label: 'Interview Coach',  path: '/coach' },
 ]
 
-export default function Sidebar({ collapsed, onToggle }) {
+export default function Sidebar({ collapsed, onToggle, onOpenSetup }) {
   const { user, logout }  = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
@@ -102,6 +102,18 @@ export default function Sidebar({ collapsed, onToggle }) {
           )
         })}
       </nav>
+
+      {/* Setup Button */}
+      <div style={{ padding: '0 12px', marginBottom: '8px' }}>
+        <button
+          className="btn btn-ghost btn-sm btn-full"
+          onClick={onOpenSetup}
+          style={{ justifyContent: collapsed ? 'center' : 'flex-start', fontSize: '0.78rem' }}
+        >
+          <span>⚙️</span>
+          {!collapsed && <span>Target Setup</span>}
+        </button>
+      </div>
 
       {/* User footer */}
       <div className="sidebar-footer">
