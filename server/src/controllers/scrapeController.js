@@ -1,147 +1,143 @@
-// Simulated job intelligence — rich mock data with realistic descriptions
-const MOCK_JOBS = [
-  {
-    id: 'job-001',
-    title: 'Senior Frontend Engineer',
-    company: 'Vercel',
-    location: 'Remote',
-    type: 'Full-time',
-    salary: '$140k – $190k',
-    posted: '2 days ago',
-    logo: '▲',
-    skills: ['React', 'TypeScript', 'Next.js', 'Node.js', 'CSS', 'Performance Optimization', 'Web Vitals'],
-    description: 'Join Vercel to build the future of the web. You will own critical parts of the Vercel dashboard, ship major user-facing features, and deeply collaborate with design and infrastructure teams. We move fast and deploy constantly.',
-  },
-  {
-    id: 'job-002',
-    title: 'Full Stack Developer',
-    company: 'Linear',
-    location: 'San Francisco, CA',
-    type: 'Full-time',
-    salary: '$130k – $170k',
-    posted: '1 day ago',
-    logo: '◈',
-    skills: ['React', 'GraphQL', 'TypeScript', 'PostgreSQL', 'Node.js', 'Electron', 'Figma'],
-    description: 'At Linear, software teams move faster. As a full-stack engineer, you will build features used by engineering teams at thousands of companies. You care deeply about craft, performance, and UX.',
-  },
-  {
-    id: 'job-003',
-    title: 'AI/ML Engineer',
-    company: 'Groq',
-    location: 'Remote',
-    type: 'Full-time',
-    salary: '$160k – $220k',
-    posted: '3 days ago',
-    logo: '⚡',
-    skills: ['Python', 'PyTorch', 'LLM', 'CUDA', 'FastAPI', 'Transformers', 'MLOps'],
-    description: 'Build the fastest AI inference infrastructure in the world. You will work on cutting-edge LLM deployment, model optimization, and real-time inference pipelines at massive scale.',
-  },
-  {
-    id: 'job-004',
-    title: 'Backend Engineer – Distributed Systems',
-    company: 'PlanetScale',
-    location: 'Remote',
-    type: 'Full-time',
-    salary: '$135k – $185k',
-    posted: '4 days ago',
-    logo: '🪐',
-    skills: ['Go', 'MySQL', 'Kubernetes', 'gRPC', 'Distributed Systems', 'Docker', 'Cloud Infrastructure'],
-    description: 'PlanetScale is the world\'s most scalable MySQL-compatible serverless database. We need passionate backend engineers to design and build our next-generation distributed storage engine.',
-  },
-  {
-    id: 'job-005',
-    title: 'Product Designer',
-    company: 'Figma',
-    location: 'New York, NY',
-    type: 'Full-time',
-    salary: '$120k – $160k',
-    posted: '5 days ago',
-    logo: '◉',
-    skills: ['Figma', 'Product Design', 'UX Research', 'Prototyping', 'Design Systems', 'Accessibility'],
-    description: 'Help millions of designers and developers collaborate. You will design core features of Figma, run user research, and partner directly with engineering to ship polished, delightful experiences.',
-  },
-  {
-    id: 'job-006',
-    title: 'DevOps / Platform Engineer',
-    company: 'Stripe',
-    location: 'Remote',
-    type: 'Full-time',
-    salary: '$145k – $195k',
-    posted: '6 days ago',
-    logo: 'S',
-    skills: ['Kubernetes', 'Terraform', 'AWS', 'CI/CD', 'Python', 'Docker', 'Observability', 'SLO/SLA'],
-    description: 'Stripe\'s mission is to increase the GDP of the internet. As a platform engineer, you\'ll build and operate the infrastructure that processes billions of API calls every year, ensuring 99.999% availability.',
-  },
-  {
-    id: 'job-007',
-    title: 'Data Scientist',
-    company: 'Notion',
-    location: 'San Francisco, CA',
-    type: 'Full-time',
-    salary: '$130k – $165k',
-    posted: '1 week ago',
-    logo: 'N',
-    skills: ['Python', 'SQL', 'Machine Learning', 'Statistics', 'A/B Testing', 'dbt', 'Looker'],
-    description: 'Use data to help 30M+ people be more productive. You will analyze user behavior, build ML models that power AI features, and partner with product teams to define the metrics that shape Notion\'s roadmap.',
-  },
-  {
-    id: 'job-008',
-    title: 'React Native Engineer',
-    company: 'Expo',
-    location: 'Remote',
-    type: 'Full-time',
-    salary: '$110k – $155k',
-    posted: '3 days ago',
-    logo: '📱',
-    skills: ['React Native', 'JavaScript', 'TypeScript', 'iOS', 'Android', 'Expo SDK', 'Native Modules'],
-    description: 'Build the tooling that empowers 1M+ mobile developers. You will work on the Expo SDK, EAS Build, and the next generation of cross-platform development tools used by millions worldwide.',
-  },
-]
+const groq = require('../config/groq')
+const { fetchMultiSourceJobs } = require('../services/scraperService')
+
+// Fallback keyword matcher if AI inference fails
+function computeMatchScoreFallback(job, resumeText) {
+  if (!resumeText) return 0
+  const lower = resumeText.toLowerCase()
+  const matched = job.skills.filter(s => lower.includes(s.toLowerCase()))
+  const skillRatio = job.skills.length > 0 ? (matched.length / job.skills.length) : 0
+  const titleWords = job.title.toLowerCase().split(/\s+/)
+  const titleMatches = titleWords.filter(w => w.length > 3 && lower.includes(w))
+  const titleBoost = titleMatches.length > 0 ? 20 : 0
+  return Math.max(10, Math.min(100, Math.round((skillRatio * 80) + titleBoost)))
+}
 
 /**
- * Score a job against a user's resume text by counting keyword overlaps.
+ * AI-powered job scoring using Groq (gemma2-9b-it) to score candidates against resume text.
  */
-function computeMatchScore(jobSkills, resumeText) {
-  if (!resumeText) return Math.floor(Math.random() * 30) + 50 // default range if no resume
-  const lower = resumeText.toLowerCase()
-  const matches = jobSkills.filter(s => lower.includes(s.toLowerCase()))
-  return Math.round((matches.length / jobSkills.length) * 100)
+async function computeMatchScoreAI(jobs, resumeText) {
+  if (!resumeText || resumeText.trim().length < 20) {
+    return jobs.map(job => ({
+      ...job,
+      matchScore: 0,
+      matchedSkills: [],
+    }))
+  }
+
+  const lowerResume = resumeText.toLowerCase()
+
+  try {
+    const jobSummaries = jobs.map((j, i) =>
+      `Job #${i + 1}: ${j.title} at ${j.company} (Skills required: ${j.skills.join(', ')})`
+    ).join('\n')
+
+    const completion = await groq.createWithFallback({
+      model: 'gemma2-9b-it',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert AI recruiter matching a candidate's resume against job descriptions. Score each job from 0 to 100 based strictly on how well the candidate's actual skills and background match the job requirements. Return ONLY a valid JSON array of numbers, e.g. [85, 40, 92]. No text, no markdown.`,
+        },
+        {
+          role: 'user',
+          content: `Candidate Resume:\n${resumeText.slice(0, 1500)}\n\nJobs List:\n${jobSummaries}`,
+        },
+      ],
+      temperature: 0.2,
+      max_tokens: 300,
+    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'])
+
+    const raw = completion.choices[0].message.content.trim()
+    const jsonStr = raw.replace(/^```json?\n?/, '').replace(/\n?```$/, '')
+    const scores = JSON.parse(jsonStr)
+
+    if (Array.isArray(scores) && scores.length === jobs.length) {
+      return jobs.map((job, i) => {
+        const matchedSkills = job.skills.filter(s => lowerResume.includes(s.toLowerCase()))
+        return {
+          ...job,
+          matchScore: Math.max(0, Math.min(100, parseInt(scores[i], 10) || 0)),
+          matchedSkills,
+        }
+      })
+    }
+  } catch (err) {
+    console.warn('[Jobs Feed] AI scoring failed, falling back to keyword matching:', err.message)
+  }
+
+  // Fallback to keyword matching if AI fails
+  return jobs.map(job => {
+    const matchedSkills = job.skills.filter(s => lowerResume.includes(s.toLowerCase()))
+    return {
+      ...job,
+      matchScore: computeMatchScoreFallback(job, resumeText),
+      matchedSkills,
+    }
+  })
 }
 
 exports.getFeed = async (req, res) => {
   try {
     const { search = '', type = 'all', minScore = 0 } = req.query
+    let resumeText = req.query.resumeText || ''
+    let fileName = ''
+    let userPreferences = null
 
-    // Optionally fetch user resume for scoring
-    let resumeText = ''
-    try {
-      const { db } = require('../config/firebase')
-      const snap = await db.collection('users').doc(req.user.uid)
-        .collection('master_profiles').doc('latest').get()
-      if (snap.exists) resumeText = snap.data().rawText || ''
-    } catch (_) {}
+    if (req.user?.uid) {
+      try {
+        const { db } = require('../config/firebase')
+        // Fetch Master Resume Profile
+        const snap = await db.collection('users').doc(req.user.uid)
+          .collection('master_profiles').doc('latest').get()
+        if (snap.exists) {
+          const data = snap.data()
+          resumeText = data.rawText || ''
+          fileName = data.fileName || ''
+        }
 
-    let jobs = MOCK_JOBS.map(job => ({
-      ...job,
-      matchScore: computeMatchScore(job.skills, resumeText),
-    }))
-
-    // Filters
-    if (search) {
-      const q = search.toLowerCase()
-      jobs = jobs.filter(j =>
-        j.title.toLowerCase().includes(q) ||
-        j.company.toLowerCase().includes(q) ||
-        j.skills.some(s => s.toLowerCase().includes(q))
-      )
+        // Fetch User Target Preferences
+        const prefSnap = await db.collection('users').doc(req.user.uid)
+          .collection('preferences').doc('latest').get()
+        if (prefSnap.exists) {
+          userPreferences = prefSnap.data()
+        }
+      } catch (_) {}
     }
-    if (type !== 'all') jobs = jobs.filter(j => j.type.toLowerCase() === type.toLowerCase())
-    jobs = jobs.filter(j => j.matchScore >= parseInt(minScore, 10))
+
+    // Extract candidate skills array from resume text
+    let candidateSkills = []
+    if (resumeText) {
+      const knownSkills = ['ESP32', 'LoRa', 'React Native', 'RTL Design', 'VLSI', 'Verilog', 'OpenCV', 'Python', 'Flask', 'C/C++', 'Embedded', 'IoT', 'TypeScript', 'Node.js', 'Firebase', 'CUDA', 'PyTorch']
+      candidateSkills = knownSkills.filter(s => resumeText.toLowerCase().includes(s.toLowerCase()))
+    }
+
+    // Get jobs from Multi-Source Scraper Service
+    const rawJobs = await fetchMultiSourceJobs({
+      targetRoles: userPreferences?.targetRoles || [],
+      domain: userPreferences?.domain || '',
+      search,
+      type,
+      skills: candidateSkills,
+    })
+
+    // AI-powered match scoring against Master Resume
+    let jobs = await computeMatchScoreAI(rawJobs, resumeText)
+
+    if (parseInt(minScore, 10) > 0) {
+      jobs = jobs.filter(j => j.matchScore >= parseInt(minScore, 10))
+    }
 
     // Sort by match score descending
     jobs.sort((a, b) => b.matchScore - a.matchScore)
 
-    res.json({ jobs, total: jobs.length })
+    res.json({
+      jobs,
+      total: jobs.length,
+      hasResume: Boolean(resumeText && resumeText.trim().length > 10),
+      fileName: fileName || (resumeText ? 'Uploaded Resume' : null),
+      preferences: userPreferences,
+    })
   } catch (err) {
     console.error('[Jobs Feed]', err)
     res.status(500).json({ error: err.message })

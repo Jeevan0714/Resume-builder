@@ -3,10 +3,13 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { AuthProvider, useAuth } from './context/AuthContext'
 
 // Pages
-import LoginPage    from './components/auth/LoginPage'
-import RegisterPage from './components/auth/RegisterPage'
-import AppShell     from './components/layout/AppShell'
-import DashboardHome from './components/dashboard/DashboardHome'
+import LoginPage       from './components/auth/LoginPage'
+import RegisterPage    from './components/auth/RegisterPage'
+import AppShell        from './components/layout/AppShell'
+import DashboardHome   from './components/dashboard/DashboardHome'
+import JobIntelligence from './components/jobs/JobIntelligence'
+import ResumeTailor    from './components/tailor/ResumeTailor'
+import InterviewCoach  from './components/coach/InterviewCoach'
 
 /* ── Page transition wrapper ─────────────────────────────── */
 const pageVariants = {
@@ -58,26 +61,7 @@ function LoadingScreen() {
   )
 }
 
-/* ── Placeholder pages ───────────────────────────────────── */
-function ComingSoon({ title, icon, color }) {
-  return (
-    <div className="page-wrapper" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        style={{ textAlign: 'center' }}
-      >
-        <div style={{ fontSize: '4rem', marginBottom: '16px', filter: `drop-shadow(0 0 20px ${color})` }}>{icon}</div>
-        <h2 style={{ marginBottom: '10px' }}>{title}</h2>
-        <p style={{ color: 'var(--text-muted)' }}>This module is being built. Coming in the next phase! 🚧</p>
-        <div style={{ marginTop: '20px' }}>
-          <span className="badge badge-primary">Phase 3-5</span>
-        </div>
-      </motion.div>
-    </div>
-  )
-}
+
 
 /* ── App Router ──────────────────────────────────────────── */
 function AppRouter() {
@@ -92,9 +76,9 @@ function AppRouter() {
         {/* Protected – inside AppShell */}
         <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
           <Route path="/dashboard" element={<PageWrap><DashboardHome /></PageWrap>} />
-          <Route path="/jobs"   element={<PageWrap><ComingSoon title="Job Intelligence" icon="🔍" color="var(--accent)" /></PageWrap>} />
-          <Route path="/tailor" element={<PageWrap><ComingSoon title="Resume Tailor" icon="✨" color="var(--primary)" /></PageWrap>} />
-          <Route path="/coach"  element={<PageWrap><ComingSoon title="Interview Coach" icon="🎯" color="var(--accent-warm)" /></PageWrap>} />
+          <Route path="/jobs"   element={<PageWrap><JobIntelligence /></PageWrap>} />
+          <Route path="/tailor" element={<PageWrap><ResumeTailor /></PageWrap>} />
+          <Route path="/coach"  element={<PageWrap><InterviewCoach /></PageWrap>} />
         </Route>
 
         {/* Default redirect */}

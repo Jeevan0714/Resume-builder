@@ -1,27 +1,41 @@
 const groq = require('../config/groq')
+const { preRenderInterviewQuestions } = require('../services/preRenderService')
 
-// In-memory session store — uid → { context, messages }
 const sessions = new Map()
+const MAX_SESSIONS = 100
+function setSession(uid, data) {
+  if (sessions.size >= MAX_SESSIONS) {
+    const oldestKey = sessions.keys().next().value
+    if (oldestKey) sessions.delete(oldestKey)
+  }
+  sessions.set(uid, { ...data, updatedAt: Date.now() })
+}
 
 exports.startSession = async (req, res) => {
-  const { jobTitle = '', company = '', jobDescription = '', resumeText = '' } = req.body
+  const { jobId, jobTitle = '', company = '', jobDescription = '', resumeText = '' } = req.body
   const uid = req.user.uid
 
-  const systemPrompt = `You are an expert interview coach helping candidates prepare for a ${jobTitle} role at ${company}.
+  // Attempt pre-rendering / fetching pre-rendered questions for 0ms delay
+  let preRendered = null
+  if (jobId || jobTitle) {
+    preRendered = await preRenderInterviewQuestions({ id: jobId || 'job-custom', title: jobTitle, company, description: jobDescription })
+  }
+
+  const systemPrompt = `You are an expert technical and behavioral interview coach helping candidates prepare for a ${jobTitle} role at ${company}.
 
 Context:
 Job Description: ${jobDescription.slice(0, 800)}
-Candidate Resume Summary: ${resumeText.slice(0, 600)}
+Candidate Resume Summary: ${resumeText.slice(0, 800)}
 
 Your role:
-1. Ask one behavioral/technical interview question at a time
-2. After the candidate responds, provide structured feedback using STAR (Situation, Task, Action, Result) criteria
-3. Score each response out of 100 across: Clarity (25pts), Specificity (25pts), Impact (25pts), Relevance (25pts)
-4. Then ask the next question
+1. Ask one behavioral or domain technical interview question at a time.
+2. After the candidate responds, provide structured feedback using STAR (Situation, Task, Action, Result) criteria.
+3. Score each response out of 100 across: Clarity (25pts), Specificity (25pts), Impact (25pts), Relevance (25pts).
+4. Then ask the next question.
 
-Start by welcoming the candidate and asking the FIRST question. Keep responses conversational but precise.`
+Keep responses encouraging, professional, and precise.`
 
-  sessions.set(uid, {
+  setSession(uid, {
     systemPrompt,
     messages: [],
     jobTitle,
@@ -31,24 +45,29 @@ Start by welcoming the candidate and asking the FIRST question. Keep responses c
   })
 
   try {
-    const response = await groq.chat.completions.create({
-      model: 'gemma2-9b-it',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: 'Start the interview session.' },
-      ],
-      temperature: 0.7,
-      max_tokens:  600,
-    })
+    let firstMessage = ''
+    if (preRendered && preRendered.firstQuestion) {
+      firstMessage = `${preRendered.openingWelcome || `Welcome! Ready for your interview for ${jobTitle} at ${company}?`}\n\nQuestion 1: ${preRendered.firstQuestion}`
+    } else {
+      const response = await groq.createWithFallback({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: 'Start the interview session.' },
+        ],
+        temperature: 0.7,
+        max_tokens: 600,
+      }, ['llama-3.1-8b-instant', 'gemma2-9b-it'])
+      firstMessage = response.choices[0].message.content
+    }
 
-    const firstMessage = response.choices[0].message.content
     sessions.get(uid).messages.push(
       { role: 'user',      content: 'Start the interview session.' },
       { role: 'assistant', content: firstMessage },
     )
     sessions.get(uid).questionCount += 1
 
-    res.json({ message: firstMessage, questionCount: 1 })
+    res.json({ message: firstMessage, questionCount: 1, preRendered })
   } catch (err) {
     console.error('[Coach Start]', err)
     res.status(500).json({ error: 'Failed to start session.' })
@@ -65,15 +84,15 @@ exports.respond = async (req, res) => {
   session.messages.push({ role: 'user', content: answer })
 
   try {
-    const response = await groq.chat.completions.create({
-      model: 'gemma2-9b-it',
+    const response = await groq.createWithFallback({
+      model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: session.systemPrompt },
         ...session.messages,
       ],
       temperature: 0.65,
       max_tokens:  800,
-    })
+    }, ['llama-3.1-8b-instant', 'gemma2-9b-it'])
 
     const coachReply = response.choices[0].message.content
     session.messages.push({ role: 'assistant', content: coachReply })
